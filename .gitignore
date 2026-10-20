@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.env
+
+# Data Lake: no versionar datos generados
+datalake/raw/*
+datalake/processed/*
+datalake/curated/*
+datalake/_checkpoints/*
+!datalake/**/.gitkeep
+
+# Spark / Airflow
+spark-warehouse/
+metastore_db/
+derby.log
+airflow/logs/
+airflow/*.db
+
+# IDE / SO
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

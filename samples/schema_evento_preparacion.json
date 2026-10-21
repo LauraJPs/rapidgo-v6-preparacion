@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rapidgo/v6/evento_preparacion/1.0",
+  "title": "Evento de preparación de pedidos - RapidGo Variante 6",
+  "description": "Contrato de los eventos publicados en el topic rapidgo.preparacion.eventos. Cada evento representa un cambio de estado de un pedido dentro del comercio.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "event_id",
+    "event_type",
+    "event_ts",
+    "equipo",
+    "comercio_id",
+    "tipo_comercio",
+    "zona",
+    "pedido_id",
+    "items",
+    "tiempo_estimado_min",
+    "cola_actual",
+    "inicio_preparacion_ts",
+    "fin_preparacion_ts"
+  ],
+  "properties": {
+    "schema_version": { "type": "string", "const": "1.0" },
+    "event_id": { "type": "string", "format": "uuid", "description": "Identificador único del evento (permite deduplicar)." },
+    "event_type": {
+      "type": "string",
+      "enum": [
+        "PEDIDO_RECIBIDO",
+        "PREPARACION_INICIADA",
+        "PREPARACION_FINALIZADA",
+        "PEDIDO_RECOGIDO",
+        "PEDIDO_CANCELADO"
+      ]
+    },
+    "event_ts": { "type": "string", "format": "date-time", "description": "Momento en que ocurrió el evento, ISO-8601 en UTC. Es el tiempo de evento usado por Spark para ventanas y watermark." },
+    "equipo": { "type": "string", "const": "equipo3-v6", "description": "Identifica los eventos generados por este equipo." },
+    "comercio_id": { "type": "string", "pattern": "^COM-[0-9]{3}$", "description": "Key del mensaje en Kafka." },
+    "tipo_comercio": {
+      "type": "string",
+      "enum": ["restaurante", "comida_rapida", "panaderia", "farmacia", "supermercado"]
+    },
+    "zona": { "type": "string", "enum": ["norte", "sur", "centro", "occidente"] },
+    "pedido_id": { "type": "string", "pattern": "^P-[0-9]{6}$" },
+    "items": { "type": "integer", "minimum": 1, "maximum": 50 },
+    "tiempo_estimado_min": { "type": "integer", "minimum": 1, "maximum": 120, "description": "Tiempo de preparación prometido por el comercio al aceptar el pedido." },
+    "cola_actual": { "type": "integer", "minimum": 0, "description": "Pedidos pendientes (recibidos o en preparación) en el comercio después de este evento." },
+    "inicio_preparacion_ts": { "type": ["string", "null"], "format": "date-time" },
+    "fin_preparacion_ts": { "type": ["string", "null"], "format": "date-time" }
+  }
+}

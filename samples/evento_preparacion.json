@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.0",
+  "event_id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+  "event_type": "PREPARACION_FINALIZADA",
+  "event_ts": "2026-10-22T18:42:10Z",
+  "equipo": "equipo3-v6",
+  "comercio_id": "COM-014",
+  "tipo_comercio": "restaurante",
+  "zona": "centro",
+  "pedido_id": "P-000231",
+  "items": 3,
+  "tiempo_estimado_min": 15,
+  "cola_actual": 6,
+  "inicio_preparacion_ts": "2026-10-22T18:21:40Z",
+  "fin_preparacion_ts": "2026-10-22T18:42:10Z"
+}

@@ -28,3 +28,16 @@ Integrar Spark Structured Streaming con Kafka dentro de Docker (versiones del co
 - PR #18 (contrato + ADR-001): https://github.com/LauraJPs/rapidgo-v6-preparacion/pull/18
 - Kanban: https://github.com/users/LauraJPs/projects/1
 - Release: v0.1.0-foundation
+
+## 6. Evidencias del entorno local
+Ejecución de `docker compose up -d` el 2026-10-22:
+
+![Contenedores levantados](../evidencias/semana1/docker-compose-up.png)
+
+Topic creado con 3 particiones (respalda ADR-001):
+
+![PartitionCount 3](../evidencias/semana1/kafka-init-particiones.png)
+
+Kafka UI mostrando los topics:
+
+![Kafka UI](../evidencias/semana1/kafka-ui-topics.png)

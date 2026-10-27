@@ -1,5 +1,5 @@
-# docker-compose PRELIMINAR (Semana 1)
-# Semana 2: se agregan producer y Spark. Semana 3: se agrega Airflow.
+# RapidGo V6 · Preparación de pedidos
+# Semana 2: Kafka + producer + Spark. Semana 3: se agrega Airflow.
 name: rapidgo-v6
 
 services:
@@ -55,16 +55,17 @@ services:
       KAFKA_CLUSTERS_0_NAME: rapidgo-local
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
 
-  # --- Semana 2 ---
-  # producer:
-  #   build: ./producer
-  #   depends_on: [kafka-init]
-  #   environment:
-  #     KAFKA_BOOTSTRAP: kafka:29092
-  #     TOPIC: rapidgo.preparacion.eventos
-  #
-  # spark:
-  #   image: apache/spark:3.5.6-python3
-  #   volumes:
-  #     - ./spark:/opt/app
-  #     - ./datalake:/opt/datalake
+  # Simulador de comercios -> Kafka (key = comercio_id)
+  producer:
+    build: ./producer
+    container_name: rapidgo-v6-producer
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+    environment:
+      KAFKA_BOOTSTRAP: kafka:29092
+      TOPIC: rapidgo.preparacion.eventos
+      VELOCIDAD: "2"         # minutos simulados por segundo real (1 min real = 2 h simuladas)
+      DURACION_SEG: "0"      # 0 = corre hasta detenerlo
+      SEED: "42"
+    restart: on-failure

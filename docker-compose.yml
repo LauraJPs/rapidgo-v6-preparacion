@@ -69,3 +69,32 @@ services:
       DURACION_SEG: "0"      # 0 = corre hasta detenerlo
       SEED: "42"
     restart: on-failure
+
+  # Spark Structured Streaming: Kafka -> Data Lake (raw / processed / curated) + alertas
+  spark:
+    image: spark:${SPARK_VERSION:-4.2.0}-python3
+    container_name: rapidgo-v6-spark
+    user: "0"
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+    environment:
+      KAFKA_BOOTSTRAP: kafka:29092
+      DATALAKE: /opt/datalake
+    ports:
+      - "4040:4040"      # Spark UI
+    volumes:
+      - ./spark:/opt/app
+      - ./datalake:/opt/datalake
+      - spark-ivy:/tmp/.ivy2
+    command: >
+      /opt/spark/bin/spark-submit
+      --master local[3]
+      --driver-memory 1g
+      --packages org.apache.spark:spark-sql-kafka-0-10_2.13:${SPARK_VERSION:-4.2.0}
+      --conf spark.jars.ivy=/tmp/.ivy2
+      /opt/app/job_preparacion.py
+    restart: on-failure
+
+volumes:
+  spark-ivy:

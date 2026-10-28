@@ -77,6 +77,12 @@ Detener todo: `docker compose down` (los datos quedan en `datalake/`).
 | `datalake/curated/kpis_comercio_5min` | K1, K2, K3 y alerta A2 por comercio y ventana de 5 min |
 | `datalake/curated/alertas/` | Alertas A1 y A2 (también publicadas en `rapidgo.preparacion.alertas`) |
 
+
+### Problemas conocidos (Windows / Git Bash)
+- `docker run ... /opt/spark/bin/spark-submit` falla con `/opt/spark/work-dir/C:/Program Files/Git/opt/...: No such file or directory`: Git Bash convierte las rutas que empiezan por `/`. Solución: `echo 'export MSYS_NO_PATHCONV=1' >> ~/.bashrc && source ~/.bashrc`.
+- `Conflict. The container name "/rapidgo-kafka" is already in use`: hay un contenedor viejo con ese nombre. Solución: `docker rename rapidgo-kafka rapidgo-kafka-viejo`.
+- Al pegar comandos con Ctrl+V en Git Bash aparece `^[[200~`: escribir los comandos o pegarlos con clic derecho → Paste, una línea a la vez.
+
 ## Pruebas y CI
 ```bash
 pip install -r requirements.txt
@@ -91,6 +97,6 @@ El workflow `.github/workflows/ci.yml` corre en cada push, Pull Request y manual
 | Versión | Contenido |
 |---|---|
 | v0.1.0-foundation | Arquitectura, contrato, KPIs, alertas, Kanban, ADR-001 |
-| v0.2.0-streaming | Producer, Spark Structured Streaming, Data Lake Parquet, alertas A1/A2, CI |
+| v0.2.0-streaming | Producer, Spark Structured Streaming, Data Lake Parquet, alertas A1/A2 (A2 con 2 ventanas seguidas, ADR-002), CI |
 | v0.3.0-orchestration | _pendiente_ |
 | v1.0.0 | _pendiente_ |

@@ -11,6 +11,7 @@ Transformaciones:
   T2 limpieza: solo eventos del equipo, campos válidos y sin duplicados (event_id).
   T3 enriquecimiento: tiempo_real_min, demorado (K3) y bandera de alerta A1.
   Agregación por ventana tumbling de 5 min con watermark (K1, K2, K3 y regla A2).
+  ADR-002: A2 solo se emite si la condición se repite en 2 ventanas seguidas.
 """
 import os
 
@@ -23,6 +24,7 @@ from reglas import (
     TOPE_PREPARACION_MIN,
     UMBRAL_COLA_MAXIMA_ALTA,
     UMBRAL_COLA_PROMEDIO,
+    VENTANAS_CONSECUTIVAS_A2,
 )
 
 BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP", "kafka:29092")
@@ -35,6 +37,7 @@ EQUIPO = "equipo3-v6"
 VENTANA = os.getenv("VENTANA", "5 minutes")
 WATERMARK = os.getenv("WATERMARK", "10 minutes")
 TRIGGER = os.getenv("TRIGGER", "10 seconds")
+VENTANA_SEG = int(VENTANA.split()[0]) * 60   # "5 minutes" -> 300
 
 ESQUEMA = T.StructType([
     T.StructField("schema_version", T.StringType()),
@@ -175,14 +178,31 @@ def procesar_lote_kpis(batch_df, batch_id):
     batch_df = batch_df.cache()
     batch_df.write.mode("append").parquet(f"{LAKE}/curated/kpis_comercio_5min")
     print(f"[spark] lote {batch_id}: {batch_df.count()} ventanas de KPIs cerradas", flush=True)
-    alertas = (batch_df.filter("alerta_a2")
+
+    # ADR-002: A2 solo se confirma si el comercio también cumplió la condición en las
+    # VENTANAS_CONSECUTIVAS_A2 - 1 ventanas anteriores (incluye ventanas ya guardadas
+    # en lotes previos y las de este mismo lote).
+    historial = (batch_df.sparkSession.read.parquet(f"{LAKE}/curated/kpis_comercio_5min")
+                 .filter("alerta_a2")
+                 .select("comercio_id", F.col("ventana_inicio").cast("long").alias("inicio_seg"))
+                 .distinct())
+    confirmadas = (batch_df.filter("alerta_a2")
+                   .withColumn("inicio_seg", F.col("ventana_inicio").cast("long")))
+    for k in range(1, VENTANAS_CONSECUTIVAS_A2):
+        anterior = historial.select("comercio_id", (F.col("inicio_seg") + k * VENTANA_SEG).alias("inicio_seg"))
+        confirmadas = confirmadas.join(anterior, ["comercio_id", "inicio_seg"], "left_semi")
+    print(f"[spark] lote {batch_id}: A2 candidatas={batch_df.filter('alerta_a2').count()} "
+          f"confirmadas={confirmadas.count()}", flush=True)
+
+    alertas = (confirmadas
                .select(F.expr("uuid()").alias("alerta_id"),
                        F.lit(ALERTA_A2).alias("codigo"),
                        F.col("severidad_a2").alias("severidad"),
                        "comercio_id", "zona",
                        F.lit(None).cast("string").alias("pedido_id"),
                        F.col("cola_promedio").cast("double").alias("valor"),
-                       F.lit(f">= {UMBRAL_COLA_PROMEDIO} promedio (ALTA si max >= {UMBRAL_COLA_MAXIMA_ALTA})").alias("umbral"),
+                       F.lit(f">= {UMBRAL_COLA_PROMEDIO} promedio en {VENTANAS_CONSECUTIVAS_A2} ventanas seguidas "
+                             f"(ALTA si max >= {UMBRAL_COLA_MAXIMA_ALTA})").alias("umbral"),
                        F.concat(F.lit("Cola promedio "), F.col("cola_promedio").cast("string"), F.lit(", máxima "),
                                 F.col("cola_maxima").cast("string"), F.lit(" entre "), F.col("ventana_inicio").cast("string"),
                                 F.lit(" y "), F.col("ventana_fin").cast("string")).alias("detalle"),

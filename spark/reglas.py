@@ -11,6 +11,7 @@ FACTOR_EXCESO_PREPARACION = 1.5   # A1: real > 1.5 x estimado
 TOPE_PREPARACION_MIN = 30         # A1: real > 30 min, sin importar lo prometido
 UMBRAL_COLA_PROMEDIO = 8          # A2: avg(cola_actual) >= 8 en la ventana
 UMBRAL_COLA_MAXIMA_ALTA = 12      # A2 sube a ALTA si max(cola_actual) >= 12
+VENTANAS_CONSECUTIVAS_A2 = 2      # ADR-002: A2 se confirma solo tras 2 ventanas seguidas
 
 ALERTA_A1 = "A1_PREPARACION_EXCEDIDA"
 ALERTA_A2 = "A2_ACUMULACION_PEDIDOS"
@@ -66,3 +67,14 @@ def evaluar_acumulacion(cola_promedio: float, cola_maxima: int):
         severidad = "ALTA" if cola_maxima >= UMBRAL_COLA_MAXIMA_ALTA else "MEDIA"
         return (ALERTA_A2, severidad)
     return None
+
+
+def confirmar_acumulacion(condiciones_consecutivas) -> bool:
+    """ADR-002: la alerta A2 solo se emite si la condición de acumulación se
+    cumplió en las últimas VENTANAS_CONSECUTIVAS_A2 ventanas seguidas.
+
+    `condiciones_consecutivas`: lista de bool de ventanas contiguas del mismo
+    comercio, en orden de tiempo (la ventana actual al final).
+    """
+    ultimas = list(condiciones_consecutivas)[-VENTANAS_CONSECUTIVAS_A2:]
+    return len(ultimas) == VENTANAS_CONSECUTIVAS_A2 and all(ultimas)

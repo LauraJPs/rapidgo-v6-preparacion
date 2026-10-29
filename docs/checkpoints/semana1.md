@@ -32,12 +32,12 @@ Integrar Spark Structured Streaming con Kafka dentro de Docker (versiones del co
 ## 6. Evidencias del entorno local
 Ejecución de `docker compose up -d` el 2026-10-22:
 
-![Contenedores levantados](../evidencias/semana1/docker-compose-up.png)
+![Contenedores levantados](../evidencias/Semana1/docker-compose-up.png)
 
 Topic creado con 3 particiones (respalda ADR-001):
 
-![PartitionCount 3](../evidencias/semana1/kafka-init-particiones.png)
+![PartitionCount 3](../evidencias/Semana1/kafka-init-particiones.png)
 
 Kafka UI mostrando los topics:
 
-![Kafka UI](../evidencias/semana1/kafka-ui-topics.png)
+![Kafka UI](../evidencias/Semana1/kafka-ui-topics.png)

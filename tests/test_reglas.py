@@ -3,6 +3,7 @@ import pytest
 from spark.reglas import (
     ALERTA_A1,
     ALERTA_A2,
+    confirmar_acumulacion,
     es_demorado,
     evaluar_acumulacion,
     evaluar_preparacion,
@@ -79,3 +80,21 @@ def test_a2_maximo_12_sube_a_alta():
 def test_a2_cola_negativa_invalida():
     with pytest.raises(ValueError):
         evaluar_acumulacion(-1, 3)
+
+
+# ---------- ADR-002: A2 solo con 2 ventanas seguidas ----------
+
+def test_a2_un_pico_aislado_no_se_confirma():
+    assert confirmar_acumulacion([False, True]) is False
+
+
+def test_a2_dos_ventanas_seguidas_se_confirma():
+    assert confirmar_acumulacion([True, True]) is True
+
+
+def test_a2_interrumpida_no_se_confirma():
+    assert confirmar_acumulacion([True, False, True]) is False
+
+
+def test_a2_sin_historial_no_se_confirma():
+    assert confirmar_acumulacion([True]) is False

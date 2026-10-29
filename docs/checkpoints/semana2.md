@@ -40,5 +40,5 @@ Al verificar la imagen de Spark desde Git Bash en Windows, el comando
 - PR Producer (Juan): #22
 - PR Spark + Data Lake (Laura): #23
 - PR ADR-002 y checkpoint (Daniel): #24
-- Action de ejemplo en PR: <enlace>
+- Action de ejemplo en PR: https://github.com/LauraJPs/rapidgo-v6-preparacion/pull/24/checks
 - Release: v0.2.0-streaming

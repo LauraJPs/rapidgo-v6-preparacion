@@ -1,0 +1,2 @@
+# El dag-processor no debe parsear la librería como si fuera un DAG
+rapidgo_lib/

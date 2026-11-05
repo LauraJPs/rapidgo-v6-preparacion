@@ -4,6 +4,7 @@ from spark.reglas import (
     ALERTA_A1,
     ALERTA_A2,
     confirmar_acumulacion,
+    confirmar_lote_a2,
     es_demorado,
     evaluar_acumulacion,
     evaluar_preparacion,
@@ -98,3 +99,40 @@ def test_a2_interrumpida_no_se_confirma():
 
 def test_a2_sin_historial_no_se_confirma():
     assert confirmar_acumulacion([True]) is False
+
+
+# ---------- Semana 3: confirmación de A2 por lotes con estado ----------
+
+def test_lote_confirma_con_ventana_anterior_del_estado():
+    confirmadas, estado = confirmar_lote_a2([("COM-027", 600)], {"COM-027": [300]}, 300)
+    assert confirmadas == {("COM-027", 600)}
+    assert estado["COM-027"] == [600]
+
+
+def test_lote_confirma_ventanas_seguidas_dentro_del_mismo_lote():
+    confirmadas, _ = confirmar_lote_a2([("COM-028", 0), ("COM-028", 300)], {}, 300)
+    assert confirmadas == {("COM-028", 300)}
+
+
+def test_lote_pico_aislado_no_se_confirma():
+    confirmadas, estado = confirmar_lote_a2([("COM-021", 900)], {"COM-021": [300]}, 300)
+    assert confirmadas == set()
+    assert estado["COM-021"] == [900]
+
+
+def test_lote_comercios_independientes():
+    confirmadas, _ = confirmar_lote_a2([("COM-027", 600), ("COM-028", 600)], {"COM-027": [300]}, 300)
+    assert confirmadas == {("COM-027", 600)}
+
+
+def test_lote_mismo_resultado_que_la_regla_simple():
+    # Ventanas 0..5 con condición [T, T, F, T, T, T] -> se confirman 300, 1200, 1500
+    condicion = [True, True, False, True, True, True]
+    estado, confirmadas_total = {}, set()
+    for i, ok in enumerate(condicion):           # un lote por ventana
+        candidatas = [("COM-001", i * 300)] if ok else []
+        confirmadas, estado = confirmar_lote_a2(candidatas, estado, 300)
+        confirmadas_total |= confirmadas
+    esperadas = {("COM-001", i * 300) for i in range(len(condicion))
+                 if confirmar_acumulacion(condicion[: i + 1])}
+    assert confirmadas_total == esperadas == {("COM-001", 300), ("COM-001", 1200), ("COM-001", 1500)}

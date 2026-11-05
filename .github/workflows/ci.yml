@@ -32,10 +32,42 @@ jobs:
           pip install -r requirements.txt
 
       - name: Validar sintaxis Python
-        run: python -m compileall producer spark tests
+        run: python -m compileall producer spark tests airflow/dags
 
-      - name: Ejecutar pruebas (contrato + reglas)
+      - name: Ejecutar pruebas (contrato + reglas + simulador + lógica del DAG)
         run: pytest -v
 
       - name: Validar Docker Compose
         run: docker compose config --quiet
+
+  # Semana 3: instala Airflow (misma versión que docker-compose) y valida que el DAG importe
+  validar-dag:
+    runs-on: ubuntu-latest
+    env:
+      AIRFLOW_VERSION: "3.1.8"
+      PYTHON_VERSION: "3.12"
+      AIRFLOW_HOME: ${{ github.workspace }}/.airflow-ci
+      AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Configurar Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+
+      - name: Instalar Airflow con constraints oficiales
+        run: |
+          python -m pip install --upgrade pip
+          pip install "apache-airflow==${AIRFLOW_VERSION}" \
+            --constraint "https://raw.githubusercontent.com/apache/airflow/constraints-${AIRFLOW_VERSION}/constraints-${PYTHON_VERSION}.txt"
+          pip install pytest==8.4.2
+
+      - name: Importar el archivo del DAG
+        run: python airflow/dags/dag_preparacion.py
+
+      - name: Validar DAG con DagBag (sin errores, ≥5 tasks, dependencias, retries)
+        run: pytest tests/test_dag.py -v

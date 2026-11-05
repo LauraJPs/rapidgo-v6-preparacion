@@ -81,6 +81,7 @@ services:
     environment:
       KAFKA_BOOTSTRAP: kafka:29092
       DATALAKE: /opt/datalake
+      TRIGGER: "30 seconds"   # 10 s generaba lotes atrasados en laptops
     ports:
       - "4040:4040"      # Spark UI
     volumes:

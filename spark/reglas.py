@@ -78,3 +78,28 @@ def confirmar_acumulacion(condiciones_consecutivas) -> bool:
     """
     ultimas = list(condiciones_consecutivas)[-VENTANAS_CONSECUTIVAS_A2:]
     return len(ultimas) == VENTANAS_CONSECUTIVAS_A2 and all(ultimas)
+
+
+def confirmar_lote_a2(candidatas, estado, ventana_seg, n=None):
+    """Versión por lotes de la regla del ADR-002 que usa Spark (Semana 3).
+
+    candidatas: lista de (comercio_id, inicio_seg) de ventanas de este lote que cumplen la
+                condición de A2.
+    estado:     dict comercio_id -> lista de inicio_seg de las últimas ventanas con condición
+                vistas en lotes anteriores.
+    Devuelve (confirmadas, nuevo_estado): las candidatas cuyas n-1 ventanas anteriores también
+    cumplieron la condición, y el estado actualizado (solo las últimas n-1 por comercio).
+    """
+    n = VENTANAS_CONSECUTIVAS_A2 if n is None else n
+    if ventana_seg <= 0 or n < 1:
+        raise ValueError("ventana_seg y n deben ser positivos")
+    conocidas = {comercio: set(inicios) for comercio, inicios in estado.items()}
+    for comercio, inicio in candidatas:
+        conocidas.setdefault(comercio, set()).add(inicio)
+    confirmadas = {
+        (comercio, inicio) for comercio, inicio in candidatas
+        if all(inicio - k * ventana_seg in conocidas[comercio] for k in range(1, n))
+    }
+    guardar = max(n - 1, 1)
+    nuevo_estado = {comercio: sorted(inicios)[-guardar:] for comercio, inicios in conocidas.items()}
+    return confirmadas, nuevo_estado

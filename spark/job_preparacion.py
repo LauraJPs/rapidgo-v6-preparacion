@@ -11,9 +11,12 @@ Transformaciones:
   T2 limpieza: solo eventos del equipo, campos válidos y sin duplicados (event_id).
   T3 enriquecimiento: tiempo_real_min, demorado (K3) y bandera de alerta A1.
   Agregación por ventana tumbling de 5 min con watermark (K1, K2, K3 y regla A2).
-  ADR-002: A2 solo se emite si la condición se repite en 2 ventanas seguidas.
+  ADR-002: A2 solo se emite si la condición se repite en 2 ventanas seguidas
+  (estado por comercio en _checkpoints/estado_a2.json, Semana 3).
 """
+import json
 import os
+import time
 
 from pyspark.sql import SparkSession, functions as F, types as T
 
@@ -25,6 +28,7 @@ from reglas import (
     UMBRAL_COLA_MAXIMA_ALTA,
     UMBRAL_COLA_PROMEDIO,
     VENTANAS_CONSECUTIVAS_A2,
+    confirmar_lote_a2,
 )
 
 BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP", "kafka:29092")
@@ -38,6 +42,7 @@ VENTANA = os.getenv("VENTANA", "5 minutes")
 WATERMARK = os.getenv("WATERMARK", "10 minutes")
 TRIGGER = os.getenv("TRIGGER", "10 seconds")
 VENTANA_SEG = int(VENTANA.split()[0]) * 60   # "5 minutes" -> 300
+ESTADO_A2 = f"{CHK}/estado_a2.json"         # últimas ventanas con condición A2 por comercio
 
 ESQUEMA = T.StructType([
     T.StructField("schema_version", T.StringType()),
@@ -172,6 +177,22 @@ def procesar_lote_a1(batch_df, batch_id):
     publicar_alertas(alertas, ALERTA_A1)
 
 
+def leer_estado_a2():
+    try:
+        with open(ESTADO_A2, encoding="utf-8") as archivo:
+            return json.load(archivo)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+def guardar_estado_a2(estado):
+    os.makedirs(os.path.dirname(ESTADO_A2), exist_ok=True)
+    temporal = ESTADO_A2 + ".tmp"
+    with open(temporal, "w", encoding="utf-8") as archivo:
+        json.dump(estado, archivo)
+    os.replace(temporal, ESTADO_A2)   # escritura atómica
+
+
 def procesar_lote_kpis(batch_df, batch_id):
     if batch_df.isEmpty():
         return
@@ -179,20 +200,22 @@ def procesar_lote_kpis(batch_df, batch_id):
     batch_df.write.mode("append").parquet(f"{LAKE}/curated/kpis_comercio_5min")
     print(f"[spark] lote {batch_id}: {batch_df.count()} ventanas de KPIs cerradas", flush=True)
 
-    # ADR-002: A2 solo se confirma si el comercio también cumplió la condición en las
-    # VENTANAS_CONSECUTIVAS_A2 - 1 ventanas anteriores (incluye ventanas ya guardadas
-    # en lotes previos y las de este mismo lote).
-    historial = (batch_df.sparkSession.read.parquet(f"{LAKE}/curated/kpis_comercio_5min")
-                 .filter("alerta_a2")
-                 .select("comercio_id", F.col("ventana_inicio").cast("long").alias("inicio_seg"))
-                 .distinct())
+    # ADR-002: A2 solo se confirma si el comercio también cumplió la condición en la(s)
+    # ventana(s) anterior(es). Semana 3: en vez de releer todo curated/kpis_comercio_5min
+    # en cada lote (lento), se guarda un estado pequeño (≤ 30 comercios) en un JSON.
+    inicio = time.time()
+    filas = (batch_df.filter("alerta_a2")
+             .select("comercio_id", F.col("ventana_inicio").cast("long").alias("inicio_seg"))
+             .collect())
+    candidatas = [(f["comercio_id"], int(f["inicio_seg"])) for f in filas]
+    confirmadas_set, nuevo_estado = confirmar_lote_a2(candidatas, leer_estado_a2(), VENTANA_SEG)
+    guardar_estado_a2(nuevo_estado)
+    claves = batch_df.sparkSession.createDataFrame(sorted(confirmadas_set), "comercio_id string, inicio_seg long")
     confirmadas = (batch_df.filter("alerta_a2")
-                   .withColumn("inicio_seg", F.col("ventana_inicio").cast("long")))
-    for k in range(1, VENTANAS_CONSECUTIVAS_A2):
-        anterior = historial.select("comercio_id", (F.col("inicio_seg") + k * VENTANA_SEG).alias("inicio_seg"))
-        confirmadas = confirmadas.join(anterior, ["comercio_id", "inicio_seg"], "left_semi")
-    print(f"[spark] lote {batch_id}: A2 candidatas={batch_df.filter('alerta_a2').count()} "
-          f"confirmadas={confirmadas.count()}", flush=True)
+                   .withColumn("inicio_seg", F.col("ventana_inicio").cast("long"))
+                   .join(claves, ["comercio_id", "inicio_seg"], "left_semi"))
+    print(f"[spark] lote {batch_id}: A2 candidatas={len(candidatas)} confirmadas={len(confirmadas_set)} "
+          f"(confirmación en {time.time() - inicio:.2f} s)", flush=True)
 
     alertas = (confirmadas
                .select(F.expr("uuid()").alias("alerta_id"),

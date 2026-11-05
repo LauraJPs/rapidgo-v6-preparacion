@@ -98,11 +98,32 @@ services:
     restart: on-failure
 
 
+  # Semana 3 (fallo real): Spark corre como root y crea curated/ con permisos 755, así que
+  # Airflow (uid 50000) no podía crear sus carpetas -> PermissionError. Este servicio crea
+  # las carpetas de salida de Airflow con permisos de escritura antes de que arranque.
+  datalake-init:
+    image: apache/airflow:3.1.8
+    container_name: rapidgo-v6-datalake-init
+    user: "0:0"
+    entrypoint: ["bash", "-c"]
+    command:
+      - >-
+        mkdir -p /opt/datalake/curated/kpis_diarios /opt/datalake/curated/alertas_consolidadas
+        /opt/datalake/curated/reportes &&
+        chmod a+rwx /opt/datalake/curated/kpis_diarios /opt/datalake/curated/alertas_consolidadas
+        /opt/datalake/curated/reportes &&
+        echo "datalake-init: carpetas de Airflow listas"
+    volumes:
+      - ./datalake:/opt/datalake
+
   # Airflow 3 en modo standalone (scheduler + api-server + dag-processor + triggerer en un contenedor)
   airflow:
     image: apache/airflow:3.1.8
     container_name: rapidgo-v6-airflow
     command: standalone
+    depends_on:
+      datalake-init:
+        condition: service_completed_successfully
     environment:
       AIRFLOW__CORE__LOAD_EXAMPLES: "False"
       AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "False"

@@ -53,3 +53,15 @@ def test_todas_las_tareas_tienen_retries(dag):
 
 def test_dag_manual_sin_catchup(dag):
     assert dag.catchup is False
+
+
+def test_verificar_fuentes_espera_con_backoff_adr003(dag):
+    t = dag.get_task("verificar_fuentes")
+    assert t.retries == 4
+    assert t.retry_exponential_backoff
+    assert t.max_retry_delay is not None
+
+
+def test_tareas_de_calidad_no_reintentan_de_mas_adr003(dag):
+    for task_id in ["validar_calidad_processed", "validar_calidad_curated"]:
+        assert dag.get_task(task_id).retries == 2

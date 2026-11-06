@@ -3,7 +3,8 @@
 
 Orquesta el control batch sobre el Data Lake que escribe Spark Structured Streaming:
 
-1. **verificar_fuentes** – hay archivos Parquet en raw, processed y curated.
+1. **verificar_fuentes** – hay archivos Parquet en raw y processed
+   (reintentos con espera exponencial, ADR-003).
 2. **validar_calidad_processed** – nulos, tipos de evento, equipo, cola y duplicados.
 3. **agregar_kpis_diarios** – K1, K2, K3 por día y comercio → `curated/kpis_diarios`.
 4. **consolidar_alertas** – no repetir la misma alerta en 60 min → `curated/alertas_consolidadas`.
@@ -43,7 +44,15 @@ default_args = {
 )
 def rapidgo_v6_preparacion():
 
-    @task
+    # ADR-003: si Spark aún no ha escrito datos (arranque en frío o Kafka detenido), esta tarea
+    # reintenta con espera exponencial (20 s, 40 s, 80 s, 120 s) en vez de fallar en 30 s.
+    # Las tareas de calidad mantienen 2 reintentos: si los datos están mal, reintentar no lo arregla.
+    @task(
+        retries=4,
+        retry_delay=timedelta(seconds=20),
+        retry_exponential_backoff=True,
+        max_retry_delay=timedelta(minutes=2),
+    )
     def verificar_fuentes() -> dict:
         from rapidgo_lib.calidad import contar_archivos_parquet, fuentes_faltantes
 

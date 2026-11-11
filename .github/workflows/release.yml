@@ -1,0 +1,45 @@
+name: Release RapidGo
+
+run-name: Release ${{ github.ref_name }} · ${{ github.actor }}
+
+# Quality gate final (Semana 4): al subir un tag v*, primero corre TODO el CI
+# (sintaxis, pruebas, validación del DAG y pipeline de punta a punta).
+# Solo si el CI queda en verde se publica el GitHub Release. Si el CI falla, no se libera.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  quality-gate:
+    uses: ./.github/workflows/ci.yml
+
+  publicar:
+    needs: quality-gate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Publicar GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          NOTAS="docs/releases/${TAG}.md"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "El release $TAG ya existe; no se modifica."
+          elif [ -f "$NOTAS" ]; then
+            gh release create "$TAG" --title "$TAG – RapidGo V6 Preparación de pedidos" --notes-file "$NOTAS" --latest
+          else
+            gh release create "$TAG" --title "$TAG" --generate-notes
+          fi
+          {
+            echo "## Release $TAG publicado ✅"
+            echo
+            echo "Quality gate superado: validar · validar-dag · pipeline-e2e"
+          } >> "$GITHUB_STEP_SUMMARY"

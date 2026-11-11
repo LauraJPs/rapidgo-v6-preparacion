@@ -126,7 +126,19 @@ Fallo controlado y recuperación: ver [ADR-003](docs/decisions/ADR-003-reintento
 pip install -r requirements.txt
 pytest -v
 ```
-El workflow `.github/workflows/ci.yml` corre en cada push, Pull Request y manualmente (`workflow_dispatch`): sintaxis Python, pruebas del contrato, reglas A1/A2 y simulador, y `docker compose config`.
+El workflow `.github/workflows/ci.yml` corre en cada push, Pull Request y manualmente (`workflow_dispatch`):
+
+| Job | Qué valida |
+|---|---|
+| `validar` | Sintaxis Python, pruebas (contrato, reglas A1/A2, simulador, lógica del DAG) y `docker compose config` |
+| `validar-dag` | Instala Airflow 3.1.8 e importa el DAG con `DagBag` (≥5 tareas, dependencias, retries) |
+| `pipeline-e2e` | Levanta todo con `docker compose up -d --build` y ejecuta `scripts/verificar_pipeline.sh` (Kafka → Spark → Data Lake → DAG → reporte) |
+
+**Ejecutarlo a mano:** pestaña **Actions** → **CI RapidGo** → **Run workflow** → rama `main` → **Run workflow**.
+
+**Quality gate del release:** `.github/workflows/release.yml` se activa al subir un tag `v*`, vuelve a correr
+todo el CI y solo si queda en verde publica el GitHub Release con las notas de `docs/releases/<tag>.md`.
+Si el CI falla, no se libera.
 
 ## Flujo de trabajo
 `Issue → Branch → PR → GitHub Actions → Review → Merge → Release`. No se hacen cambios funcionales directamente sobre `main`.

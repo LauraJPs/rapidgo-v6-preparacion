@@ -8,6 +8,16 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      e2e:
+        description: "Ejecutar también la prueba de punta a punta con Docker (~10 min)"
+        type: boolean
+        default: true
+  workflow_call:          # Semana 4: release.yml lo reutiliza como quality gate antes de publicar
+    inputs:
+      e2e:
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -71,3 +81,54 @@ jobs:
 
       - name: Validar DAG con DagBag (sin errores, ≥5 tasks, dependencias, retries)
         run: pytest tests/test_dag.py -v
+
+  # Semana 4 – Quality gate de punta a punta: levanta el pipeline completo con Docker Compose
+  # tal como lo indica el README y comprueba Kafka → Spark → Data Lake → DAG de Airflow → reporte.
+  pipeline-e2e:
+    needs: [validar, validar-dag]
+    if: github.event_name == 'push' || github.event_name == 'pull_request' || inputs.e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Levantar el pipeline (docker compose up -d --build)
+        run: docker compose up -d --build
+
+      - name: Esperar a Airflow
+        run: |
+          for i in $(seq 1 36); do
+            curl -s -o /dev/null http://localhost:8080/ && { echo "Airflow listo"; exit 0; }
+            echo "Airflow arrancando ($i/36)..."; sleep 10
+          done
+          echo "Airflow no respondió en 6 min"; exit 1
+
+      - name: Verificar de punta a punta (scripts/verificar_pipeline.sh)
+        run: bash scripts/verificar_pipeline.sh
+
+      - name: Resumen en la página del Action
+        if: success()
+        run: |
+          {
+            echo "## Pipeline de punta a punta ✅"
+            echo
+            for capa in raw processed curated; do
+              echo "- $capa: $(find datalake/$capa -name '*.parquet' -not -path '*/_*' | wc -l) archivos Parquet"
+            done
+            echo
+            cat "$(ls -t datalake/curated/reportes/reporte_*.md | head -1)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Logs si algo falló
+        if: failure()
+        run: |
+          docker compose ps -a
+          for s in kafka-init datalake-init producer spark airflow; do
+            echo "::group::logs $s"; docker compose logs --tail 80 "$s"; echo "::endgroup::"
+          done
+
+      - name: Apagar
+        if: always()
+        run: docker compose down -v

@@ -26,6 +26,7 @@ MAX_PCT_DUPLICADOS = 1.0          # % máximo de event_id repetidos aceptado
 PCT_DEMORADOS_CRITICO = 50.0      # comercio crítico del día si más de la mitad sale tarde
 COLA_PROMEDIO_CRITICA = 8.0       # mismo umbral de la regla A2
 VENTANA_CONSOLIDACION_MIN = 60    # ADR-002 pendiente: no repetir la misma alerta en 60 min
+FRESCURA_MAX_MIN = 15             # ADR-003 pendiente: más de 15 min sin escribir = Spark detenido
 
 
 # ---------------------------------------------------------------- fuentes ---
@@ -39,6 +40,26 @@ def contar_archivos_parquet(lake: str) -> dict[str, int]:
             total += sum(1 for a in archivos if a.endswith(".parquet") and not a.startswith(("_", ".")))
         conteo[nombre] = total
     return conteo
+
+
+def minutos_desde_ultimo_parquet(lake: str, fuente: str = "processed", ahora: float | None = None) -> float | None:
+    """Minutos desde la última escritura de Spark en una fuente (None si no hay archivos).
+
+    Permite distinguir "todavía no hay datos" de "hay datos, pero Spark dejó de escribir".
+    """
+    import time
+
+    ultimo = None
+    for raiz, carpetas, archivos in os.walk(os.path.join(lake, FUENTES[fuente])):
+        carpetas[:] = [c for c in carpetas if not c.startswith(("_", "."))]
+        for a in archivos:
+            if a.endswith(".parquet") and not a.startswith(("_", ".")):
+                mtime = os.path.getmtime(os.path.join(raiz, a))
+                ultimo = mtime if ultimo is None or mtime > ultimo else ultimo
+    if ultimo is None:
+        return None
+    ahora = time.time() if ahora is None else ahora
+    return round(max(0.0, ahora - ultimo) / 60, 1)
 
 
 def fuentes_faltantes(conteo: dict[str, int], requeridas=("raw", "processed")) -> list[str]:
@@ -161,6 +182,15 @@ def validar_kpis(kpis: pd.DataFrame) -> list[str]:
 
 
 # ----------------------------------------------------------------- reporte ---
+def _linea_frescura(frescura_min) -> list[str]:
+    if frescura_min is None:
+        return []
+    linea = f"- Frescura: último Parquet de processed escrito hace {frescura_min} min"
+    if frescura_min > FRESCURA_MAX_MIN:
+        linea += f" ⚠️ más de {FRESCURA_MAX_MIN} min sin datos nuevos: ¿Spark o el producer están detenidos?"
+    return [linea]
+
+
 def generar_reporte_md(run_id: str, metricas: dict, kpis: pd.DataFrame,
                        alertas_info: dict, validacion: dict) -> str:
     criticos = kpis[kpis["critico"]].sort_values(["cola_promedio", "pct_demorados"], ascending=False)
@@ -176,6 +206,7 @@ def generar_reporte_md(run_id: str, metricas: dict, kpis: pd.DataFrame,
         f"**{alertas_info.get('consolidadas', 0)} consolidadas** "
         f"(sin repetir en {VENTANA_CONSOLIDACION_MIN} min)",
         f"- Validación curated: {'OK' if not validacion.get('errores') else validacion['errores']}",
+        *_linea_frescura(metricas.get("frescura_min")),
         "",
         "## Comercios críticos (top 10)",
         "",

@@ -4,7 +4,7 @@
 Orquesta el control batch sobre el Data Lake que escribe Spark Structured Streaming:
 
 1. **verificar_fuentes** – hay archivos Parquet en raw y processed
-   (reintentos con espera exponencial, ADR-003).
+   (reintentos con espera exponencial, ADR-003) y hace cuánto escribió Spark (frescura).
 2. **validar_calidad_processed** – nulos, tipos de evento, equipo, cola y duplicados.
 3. **agregar_kpis_diarios** – K1, K2, K3 por día y comercio → `curated/kpis_diarios`.
 4. **consolidar_alertas** – no repetir la misma alerta en 60 min → `curated/alertas_consolidadas`.
@@ -54,7 +54,7 @@ def rapidgo_v6_preparacion():
         max_retry_delay=timedelta(minutes=2),
     )
     def verificar_fuentes() -> dict:
-        from rapidgo_lib.calidad import contar_archivos_parquet, fuentes_faltantes
+        from rapidgo_lib.calidad import contar_archivos_parquet, fuentes_faltantes, minutos_desde_ultimo_parquet
 
         conteo = contar_archivos_parquet(LAKE)
         print(f"[verificar_fuentes] archivos Parquet por fuente: {conteo}")
@@ -62,6 +62,8 @@ def rapidgo_v6_preparacion():
         if faltan:
             raise RuntimeError(f"Fuentes sin archivos Parquet: {faltan} · conteo={conteo}. "
                                "¿Están corriendo el producer y Spark?")
+        conteo["frescura_min"] = minutos_desde_ultimo_parquet(LAKE, "processed")
+        print(f"[verificar_fuentes] última escritura en processed hace {conteo['frescura_min']} min")
         return conteo
 
     @task
@@ -74,7 +76,7 @@ def rapidgo_v6_preparacion():
         print(f"[validar_calidad_processed] archivos={conteo['processed']} métricas={resultado['metricas']}")
         if resultado["errores"]:
             raise ValueError(f"Calidad de processed NO superada: {resultado['errores']}")
-        return resultado["metricas"]
+        return {**resultado["metricas"], "frescura_min": conteo.get("frescura_min")}
 
     @task
     def agregar_kpis_diarios(metricas: dict) -> dict:

@@ -68,7 +68,15 @@ Consultar los resultados del Data Lake:
 docker compose exec spark /opt/spark/bin/spark-submit /opt/app/consultar_lake.py
 ```
 
-Detener todo: `docker compose down` (los datos quedan en `datalake/`).
+Verificar todo de punta a punta (contenedores → Data Lake → DAG → reporte):
+```bash
+bash scripts/verificar_pipeline.sh
+```
+
+Detener todo: `docker compose down`. Al volver a levantar, Kafka arranca vacío y `kafka-init` limpia
+el Data Lake automáticamente (los offsets y checkpoints viejos ya no sirven). Para pausar sin perder
+datos: `docker compose stop` / `docker compose start`; el producer continúa su reloj simulado desde
+el último evento del topic.
 
 ### Orquestación con Airflow
 El DAG `rapidgo_v6_preparacion` (`airflow/dags/dag_preparacion.py`) corre sobre el Data Lake que escribe Spark:
@@ -111,7 +119,7 @@ Fallo controlado y recuperación: ver [ADR-003](docs/decisions/ADR-003-reintento
 - `Conflict. The container name "/rapidgo-kafka" is already in use`: hay un contenedor viejo con ese nombre. Solución: `docker rename rapidgo-kafka rapidgo-kafka-viejo`.
 - Al pegar comandos con Ctrl+V en Git Bash aparece `^[[200~`: escribir los comandos o pegarlos con clic derecho → Paste, una línea a la vez.
 - Tareas del DAG fallan con `PermissionError: [Errno 13] Permission denied: '/opt/datalake/curated/...'`: Spark (root) creó `curated/` y Airflow (uid 50000) no puede escribir. Lo evita el servicio `datalake-init` del compose; arreglo manual: `MSYS_NO_PATHCONV=1 docker exec -u root rapidgo-v6-airflow chmod -R a+rwX /opt/datalake/curated` y *Clear* de las tareas.
-- Después de `docker compose down` Kafka empieza de cero: borrar `datalake/raw processed curated _checkpoints` antes de volver a levantar Spark (si no, Spark no escribe por offsets viejos en el checkpoint).
+- Spark no escribe después de `docker compose down` (offsets viejos en el checkpoint): desde la Semana 4 `kafka-init` limpia el Data Lake cuando el topic es nuevo; si se borró solo Kafka, ejecutar `docker compose down` y volver a levantar.
 
 ## Pruebas y CI
 ```bash

@@ -6,6 +6,10 @@ Variables de entorno:
   VELOCIDAD         minutos simulados por segundo real (default 2)
   DURACION_SEG      segundos reales a ejecutar, 0 = infinito (default 0)
   SEED              semilla aleatoria         (default 42)
+
+Semana 4: si el topic ya tiene eventos (por ejemplo tras `docker compose restart producer`),
+el reloj simulado continúa desde el último event_ts publicado. Antes volvía a "ahora" y Spark
+descartaba los eventos nuevos por estar detrás del watermark.
 """
 import json
 import os
@@ -14,10 +18,10 @@ import time
 from collections import Counter
 from datetime import datetime, timedelta, timezone
 
-from kafka import KafkaProducer
+from kafka import KafkaConsumer, KafkaProducer, TopicPartition
 from kafka.errors import NoBrokersAvailable
 
-from generador import Simulador
+from generador import Simulador, reloj_inicial
 
 BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP", "kafka:29092")
 TOPIC = os.getenv("TOPIC", "rapidgo.preparacion.eventos")
@@ -50,12 +54,49 @@ def conectar(intentos=20):
     raise SystemExit("[producer] No fue posible conectar con Kafka")
 
 
+def ultimo_event_ts():
+    """Mayor event_ts entre el último mensaje de cada partición del topic (None si está vacío)."""
+    consumer = None
+    try:
+        consumer = KafkaConsumer(bootstrap_servers=BOOTSTRAP, enable_auto_commit=False,
+                                 value_deserializer=lambda v: json.loads(v.decode("utf-8")))
+        particiones = [TopicPartition(TOPIC, p) for p in sorted(consumer.partitions_for_topic(TOPIC) or [])]
+        if not particiones:
+            return None
+        consumer.assign(particiones)
+        finales = consumer.end_offsets(particiones)
+        con_datos = [tp for tp in particiones if finales[tp] > 0]
+        for tp in con_datos:
+            consumer.seek(tp, finales[tp] - 1)
+        maximo, pendientes = None, set(con_datos)
+        for _ in range(10):
+            if not pendientes:
+                break
+            for tp, registros in consumer.poll(timeout_ms=1000).items():
+                pendientes.discard(tp)
+                for r in registros:
+                    ts = datetime.strptime(r.value["event_ts"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+                    maximo = ts if maximo is None or ts > maximo else maximo
+        return maximo
+    except Exception as error:  # nunca impedir que el producer arranque
+        print(f"[producer] No se pudo leer el último evento del topic ({error}); se usa la hora actual",
+              flush=True)
+        return None
+    finally:
+        if consumer is not None:
+            consumer.close()
+
+
 def main():
     signal.signal(signal.SIGTERM, _salir)
     signal.signal(signal.SIGINT, _salir)
 
     producer = conectar()
-    reloj_sim = datetime.now(timezone.utc).replace(microsecond=0)
+    ultimo = ultimo_event_ts()
+    reloj_sim = reloj_inicial(datetime.now(timezone.utc), ultimo)
+    if ultimo:
+        print(f"[producer] El topic ya tenía eventos hasta {ultimo:%Y-%m-%d %H:%M}; "
+              f"el reloj simulado continúa desde {reloj_sim:%Y-%m-%d %H:%M}", flush=True)
     sim = Simulador(inicio=reloj_sim, seed=SEED)
     perfiles = Counter(c.perfil for c in sim.comercios)
     print(f"[producer] Conectado a {BOOTSTRAP} · topic={TOPIC} · velocidad={VELOCIDAD} min/s "

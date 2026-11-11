@@ -147,3 +147,39 @@ def test_reporte_incluye_resumen_y_criticos():
     assert "manual__prueba" in texto
     assert "10 originales" in texto and "3 consolidadas" in texto
     assert "COM-002" in texto
+
+
+# ---------- Semana 4: frescura del Data Lake ----------
+
+def test_frescura_none_si_no_hay_parquet(tmp_path):
+    from rapidgo_lib.calidad import minutos_desde_ultimo_parquet
+    (tmp_path / "processed" / "eventos").mkdir(parents=True)
+    assert minutos_desde_ultimo_parquet(str(tmp_path)) is None
+
+
+def test_frescura_usa_el_archivo_mas_reciente_e_ignora_metadata(tmp_path):
+    from rapidgo_lib.calidad import minutos_desde_ultimo_parquet
+    carpeta = tmp_path / "processed" / "eventos" / "fecha=2026-11-09"
+    carpeta.mkdir(parents=True)
+    viejo, nuevo = carpeta / "part-0.parquet", carpeta / "part-1.parquet"
+    viejo.write_bytes(b"x")
+    nuevo.write_bytes(b"x")
+    meta = tmp_path / "processed" / "eventos" / "_spark_metadata"
+    meta.mkdir()
+    (meta / "0.parquet").write_bytes(b"x")
+    ahora = 1_800_000_000.0
+    os.utime(viejo, (ahora - 3600, ahora - 3600))
+    os.utime(nuevo, (ahora - 120, ahora - 120))
+    os.utime(meta / "0.parquet", (ahora, ahora))
+    assert minutos_desde_ultimo_parquet(str(tmp_path), ahora=ahora) == 2.0
+
+
+def test_reporte_avisa_si_spark_dejo_de_escribir():
+    from rapidgo_lib.calidad import FRESCURA_MAX_MIN
+    k = kpis_diarios(eventos())
+    reciente = generar_reporte_md("run", {"filas": 4, "frescura_min": 1.5}, k, {}, {"errores": []})
+    vieja = generar_reporte_md("run", {"filas": 4, "frescura_min": FRESCURA_MAX_MIN + 5}, k, {}, {"errores": []})
+    sin_dato = generar_reporte_md("run", {"filas": 4}, k, {}, {"errores": []})
+    assert "hace 1.5 min" in reciente and "⚠️" not in reciente
+    assert "⚠️" in vieja
+    assert "Frescura" not in sin_dato

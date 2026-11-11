@@ -58,6 +58,15 @@ def iso(ts: datetime) -> str:
     return ts.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def reloj_inicial(ahora: datetime, ultimo_evento: datetime | None = None) -> datetime:
+    """Hora simulada de arranque: la actual o, si el topic ya tiene eventos más adelante
+    (reloj acelerado), un minuto después del último para no quedar detrás del watermark."""
+    ahora = ahora.astimezone(timezone.utc).replace(microsecond=0)
+    if ultimo_evento is None:
+        return ahora
+    return max(ahora, ultimo_evento.astimezone(timezone.utc) + timedelta(minutes=1))
+
+
 class Simulador:
     """Genera eventos en orden de tiempo simulado."""
 

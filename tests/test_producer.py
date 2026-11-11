@@ -77,3 +77,24 @@ def test_perfiles_generan_los_casos_de_alerta():
         max_cola[e["comercio_id"]] = max(max_cola[e["comercio_id"]], e["cola_actual"])
     saturados = [cid for cid, p in perfil.items() if p == "saturado"]
     assert all(max_cola[cid] >= 8 for cid in saturados)
+
+
+# ---------- Semana 4: reanudar el reloj simulado ----------
+
+def test_reloj_inicial_sin_eventos_previos_usa_la_hora_actual():
+    from producer.generador import reloj_inicial
+    ahora = datetime(2026, 11, 9, 19, 0, 30, 123456, tzinfo=timezone.utc)
+    assert reloj_inicial(ahora) == datetime(2026, 11, 9, 19, 0, 30, tzinfo=timezone.utc)
+
+
+def test_reloj_inicial_continua_despues_del_ultimo_evento_del_topic():
+    from producer.generador import reloj_inicial
+    ahora = datetime(2026, 11, 9, 19, 0, tzinfo=timezone.utc)
+    ultimo = ahora + timedelta(hours=20)          # reloj acelerado: el topic va 20 h adelante
+    assert reloj_inicial(ahora, ultimo) == ultimo + timedelta(minutes=1)
+
+
+def test_reloj_inicial_no_retrocede_si_el_ultimo_evento_es_viejo():
+    from producer.generador import reloj_inicial
+    ahora = datetime(2026, 11, 9, 19, 0, tzinfo=timezone.utc)
+    assert reloj_inicial(ahora, ahora - timedelta(days=2)) == ahora

@@ -1,5 +1,6 @@
 # RapidGo V6 · Preparación de pedidos
 # Semana 2: Kafka + producer + Spark. Semana 3: Airflow (calidad, KPIs diarios y reporte).
+# Semana 4: todo arranca con `docker compose up -d --build` (limpieza automática del Data Lake).
 name: rapidgo-v6
 
 services:
@@ -28,15 +29,28 @@ services:
       retries: 10
 
   # Crea los topics con la key/particiones definidas en ADR-001 y termina.
+  # Semana 4: si Kafka arranca vacío (después de `docker compose down`), los offsets y checkpoints
+  # guardados en datalake/ ya no corresponden al topic y Spark dejaba de escribir. Por eso, cuando
+  # el topic no existía, se limpia el Data Lake antes de crearlo (se conservan los .gitkeep).
   kafka-init:
     image: apache/kafka:3.9.1
     container_name: rapidgo-kafka-init
+    user: "0"
     depends_on:
       kafka:
         condition: service_healthy
+    volumes:
+      - ./datalake:/opt/datalake
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
+        TOPICS=$$(/opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:29092 --list) || exit 1
+        if echo "$$TOPICS" | grep -qx rapidgo.preparacion.eventos; then
+          echo "kafka-init: el topic ya existía -> se conserva el Data Lake"
+        else
+          echo "kafka-init: Kafka nuevo -> se limpia el Data Lake (raw, processed, curated, _checkpoints)"
+          rm -rf /opt/datalake/raw/* /opt/datalake/processed/* /opt/datalake/curated/* /opt/datalake/_checkpoints/*
+        fi
         /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:29092 --create --if-not-exists \
           --topic rapidgo.preparacion.eventos --partitions 3 --replication-factor 1
         /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:29092 --create --if-not-exists \
@@ -78,6 +92,8 @@ services:
     depends_on:
       kafka-init:
         condition: service_completed_successfully
+      datalake-init:
+        condition: service_completed_successfully
     environment:
       KAFKA_BOOTSTRAP: kafka:29092
       DATALAKE: /opt/datalake
@@ -105,6 +121,9 @@ services:
     image: apache/airflow:3.1.8
     container_name: rapidgo-v6-datalake-init
     user: "0:0"
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully   # crea las carpetas después de la limpieza
     entrypoint: ["bash", "-c"]
     command:
       - >-

@@ -13,7 +13,7 @@ Pipeline Big Data end-to-end para detectar **demoras y acumulación de pedidos e
 
 **Estado actual:** `v1.0.0` – pipeline completo Kafka → Spark → Data Lake → Airflow, con quality gate en GitHub Actions.
 
-🎬 **Video final (≤ 10 min):** _ENLACE_DEL_VIDEO_
+🎬 **Video final (≤ 10 min):** [Ver en YouTube](https://youtu.be/tzMMP3NlS70)
 
 ## Problema y valor
 Cuando un comercio se demora preparando o acumula pedidos, el repartidor espera, la comida se enfría y el cliente recibe tarde. RapidGo necesita indicadores y alertas casi en tiempo real por comercio para actuar a tiempo.
